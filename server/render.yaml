@@ -1,0 +1,32 @@
+version: 3
+
+build:
+  command: "cd server && npm install && npm start"
+  runtime: "node@18"
+
+variables:
+  - key: "MONGODB_URI"
+    description: "MongoDB connection string"
+  - key: "FIREBASE_PROJECT_ID"
+    description: "Firebase project ID"
+  - key: "FIREBASE_PRIVATE_KEY"
+    description: "Firebase private key"
+  - key: "FIREBASE_CLIENT_EMAIL"
+    description: "Firebase client email"
+  - key: "ANTHROPIC_API_KEY"
+    description: "Anthropic API key"
+  - key: "CLIENT_URL"
+    description: "Frontend URL"
+
+services:
+  - type: web
+    name: studyroom-backend
+    envVars:
+      - MONGODB_URI
+      - FIREBASE_PROJECT_ID
+      - FIREBASE_PRIVATE_KEY
+      - FIREBASE_CLIENT_EMAIL
+      - ANTHROPIC_API_KEY
+      - CLIENT_URL
+    autoDeploy: true
+    startCommand: "cd server && npm install && npm start"

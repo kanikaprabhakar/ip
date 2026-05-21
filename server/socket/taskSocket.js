@@ -1,15 +1,36 @@
 import Session from '../models/Session.js';
 import Task from '../models/Task.js';
-import User from '../models/User.js';
 
 export const setupTaskSocket = (io) => {
   io.on('connection', (socket) => {
+    socket.on('task:sync-request', async (data) => {
+      const { roomCode } = data;
+
+      try {
+        const tasks = await Task.find({ roomCode }).sort({ createdAt: 1 });
+        socket.emit('task:sync', {
+          roomCode,
+          tasks: tasks.map((task) => ({
+            _id: task._id,
+            text: task.text,
+            completed: task.completed,
+            roomCode: task.roomCode,
+            userId: task.userId
+          }))
+        });
+      } catch (error) {
+        console.error('Error syncing tasks:', error);
+      }
+    });
+
     // Add a task
     socket.on('task:add', async (data) => {
-      const { roomCode, sessionId, userId, taskText } = data;
+      const { roomCode, sessionId, taskText } = data;
+      const userId = socket.data.userId || data.userId;
 
       try {
         const task = new Task({
+          roomCode,
           sessionId,
           userId,
           text: taskText
@@ -19,7 +40,7 @@ export const setupTaskSocket = (io) => {
 
         io.to(roomCode).emit('task:updated', {
           action: 'added',
-          task: { _id: task._id, text: task.text, completed: task.completed }
+          task: { _id: task._id, text: task.text, completed: task.completed, userId: task.userId }
         });
       } catch (error) {
         console.error('Error adding task:', error);
@@ -31,11 +52,13 @@ export const setupTaskSocket = (io) => {
       const { roomCode, taskId } = data;
 
       try {
-        const task = await Task.findByIdAndUpdate(
-          taskId,
-          { completed: true },
-          { new: true }
-        );
+        const task = await Task.findById(taskId);
+        if (!task) {
+          return;
+        }
+
+        task.completed = !task.completed;
+        await task.save();
 
         io.to(roomCode).emit('task:updated', {
           action: 'toggled',

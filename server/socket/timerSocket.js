@@ -1,23 +1,21 @@
 import { getTimerState, startTimer, pauseTimer, getOrInitializeTimer } from '../services/timerService.js';
 
+const roomIntervals = new Map();
+
 export const setupTimerSocket = (io) => {
   io.on('connection', (socket) => {
     // Start timer in a room
     socket.on('timer:start', (data) => {
       const { roomCode } = data;
       startTimer(roomCode);
-      const state = getTimerState(roomCode);
-
-      io.to(roomCode).emit('timer:started', state);
+      io.to(roomCode).emit('timer:sync', getTimerState(roomCode));
     });
 
     // Pause timer
     socket.on('timer:pause', (data) => {
       const { roomCode } = data;
       pauseTimer(roomCode);
-      const state = getTimerState(roomCode);
-
-      io.to(roomCode).emit('timer:paused', state);
+      io.to(roomCode).emit('timer:sync', getTimerState(roomCode));
     });
 
     // Sync timer state (client requesting current state)
@@ -33,19 +31,18 @@ export const setupTimerSocket = (io) => {
       const state = getOrInitializeTimer(roomCode);
       socket.emit('timer:sync', state);
 
-      // Emit every second
-      const interval = setInterval(() => {
-        if (io.sockets.adapter.rooms.get(roomCode)?.size > 0) {
-          const state = getTimerState(roomCode);
-          io.to(roomCode).emit('timer:sync', state);
-        } else {
-          clearInterval(interval);
-        }
-      }, 1000);
+      if (!roomIntervals.has(roomCode)) {
+        const interval = setInterval(() => {
+          if (io.sockets.adapter.rooms.get(roomCode)?.size > 0) {
+            io.to(roomCode).emit('timer:sync', getTimerState(roomCode));
+          } else {
+            clearInterval(interval);
+            roomIntervals.delete(roomCode);
+          }
+        }, 1000);
 
-      socket.on('disconnect', () => {
-        clearInterval(interval);
-      });
+        roomIntervals.set(roomCode, interval);
+      }
     });
   });
 };

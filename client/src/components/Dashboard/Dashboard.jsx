@@ -1,10 +1,10 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext.jsx';
 import * as api from '../../services/api.js';
 
 const Dashboard = () => {
-  const { user } = useContext(AuthContext);
+  const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [tab, setTab] = useState('create');
   const [roomName, setRoomName] = useState('');
@@ -53,11 +53,24 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-bg via-dark-secondary to-dark-tertiary p-6">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 gap-4">
           <h1 className="text-4xl font-bold text-white">StudyRoom</h1>
           <div className="flex items-center gap-4">
-            <img src={user?.photoURL} alt={user?.name} className="w-10 h-10 rounded-full" />
+            <img
+              src={user?.photoURL || 'https://via.placeholder.com/80'}
+              alt={user?.name || 'Profile'}
+              className="w-10 h-10 rounded-full object-cover border border-white/10"
+              onError={(event) => {
+                event.currentTarget.src = 'https://via.placeholder.com/80';
+              }}
+            />
             <span className="text-white/80">{user?.name}</span>
+            <button
+              onClick={logout}
+              className="px-4 py-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
+            >
+              Sign out
+            </button>
           </div>
         </div>
 

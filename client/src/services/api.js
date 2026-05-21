@@ -27,6 +27,7 @@ export const createRoom = (roomData) => apiClient.post('/rooms', roomData);
 export const joinRoom = (code) => apiClient.post(`/rooms/join/${code}`);
 export const getRoomByCode = (code) => apiClient.get(`/rooms/code/${code}`);
 export const listRooms = () => apiClient.get('/rooms');
+export const deleteRoom = (code) => apiClient.delete(`/rooms/${code}`);
 
 // Session endpoints
 export const createSession = (sessionData) => apiClient.post('/sessions', sessionData);
@@ -39,5 +40,8 @@ export const getLeaderboard = () => apiClient.get('/leaderboard');
 
 // AI endpoints
 export const chatWithAI = (message) => apiClient.post('/ai/chat', { message });
+
+// Freesound search (server proxies with server-side API key)
+export const searchFreesound = (q, page_size = 10) => apiClient.get(`/audio/freesound/search?q=${encodeURIComponent(q)}&page_size=${page_size}`);
 
 export default apiClient;

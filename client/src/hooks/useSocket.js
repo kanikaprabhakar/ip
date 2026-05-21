@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext } from 'react';
 import RoomContext from '../context/RoomContext.jsx';
 import AuthContext from '../context/AuthContext.jsx';
 
@@ -26,4 +26,6 @@ export const useAuth = () => {
   return context;
 };
 
-export default { useSocket, useRoom, useAuth };
+const hooks = { useSocket, useRoom, useAuth };
+
+export default hooks;

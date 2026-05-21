@@ -1,5 +1,6 @@
 import Room from '../models/Room.js';
 import User from '../models/User.js';
+import { deleteRoomData } from '../services/roomLifecycleService.js';
 
 // Generate a unique 6-character alphanumeric room code
 const generateRoomCode = async () => {
@@ -69,7 +70,9 @@ export const joinRoom = async (req, res) => {
 export const getRoomByCode = async (req, res) => {
   try {
     const { code } = req.params;
-    const room = await Room.findOne({ code }).populate('members', 'name email photoURL');
+    const room = await Room.findOne({ code })
+      .populate('members', 'name email photoURL uid')
+      .populate('createdBy', 'name email photoURL uid');
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
     }
@@ -88,4 +91,25 @@ export const listRooms = async (req, res) => {
   }
 };
 
-export default { createRoom, joinRoom, getRoomByCode, listRooms };
+export const deleteRoom = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const room = await Room.findOne({ code });
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    const user = await User.findOne({ uid: req.user.uid });
+    if (!user || room.createdBy.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: 'Only the room owner can delete the room' });
+    }
+
+    await deleteRoomData(code);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export default { createRoom, joinRoom, getRoomByCode, listRooms, deleteRoom };

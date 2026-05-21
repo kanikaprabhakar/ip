@@ -16,6 +16,7 @@ const TodoPanel = ({ roomCode, sessionId, userId }) => {
   return (
     <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl p-4">
       <h3 className="text-white font-semibold mb-4">Today's Tasks</h3>
+      <p className="mb-3 text-xs text-white/40">Shared across everyone in this room.</p>
 
       <form onSubmit={handleAddTask} className="mb-4 flex gap-2">
         <input

@@ -7,6 +7,7 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [dbUser, setDbUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export const AuthProvider = ({ children }) => {
 
         // Register or update user in database
         try {
-          await api.registerUser({
+          const { data } = await api.registerUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             name: firebaseUser.displayName,
@@ -30,6 +31,7 @@ export const AuthProvider = ({ children }) => {
             name: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL
           });
+          setDbUser(data.user);
         } catch (error) {
           console.error('Error registering user:', error);
         }
@@ -57,6 +59,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await signOut(auth);
       setUser(null);
+      setDbUser(null);
       localStorage.removeItem('firebaseToken');
     } catch (error) {
       console.error('Logout error:', error);
@@ -64,7 +67,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, dbUser, loading, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -8,6 +8,7 @@ const RoomSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   activeMembers: [{ userId: String, userName: String, userPhoto: String, currentTask: String, joinedAt: Date }],
+  emptySince: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

@@ -15,12 +15,14 @@ import roomRoutes from './routes/rooms.js';
 import sessionRoutes from './routes/sessions.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import aiRoutes from './routes/ai.js';
+import audioRoutes from './routes/audio.js';
 
 // Import socket handlers
 import { setupRoomSocket } from './socket/roomSocket.js';
 import { setupTimerSocket } from './socket/timerSocket.js';
 import { setupTaskSocket } from './socket/taskSocket.js';
 import { setupReactionSocket } from './socket/reactionSocket.js';
+import { collectExpiredRooms } from './services/roomLifecycleService.js';
 
 // Initialize Firebase Admin
 const firebaseConfig = {
@@ -43,6 +45,30 @@ const io = new SocketIOServer(httpServer, {
   }
 });
 
+// Socket auth: verify Firebase ID token on connection (if configured)
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    if (!token) {
+      // no token provided; allow anonymous connection but without user data
+      return next();
+    }
+
+    if (!admin.apps || admin.apps.length === 0) {
+      console.error('Socket auth: Firebase Admin not initialized');
+      return next();
+    }
+
+    const decoded = await admin.auth().verifyIdToken(token);
+    socket.data.userId = decoded.uid;
+    socket.data.userEmail = decoded.email;
+    return next();
+  } catch (err) {
+    console.error('Socket auth error:', err);
+    return next(new Error('Unauthorized'));
+  }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -59,6 +85,7 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/audio', audioRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -76,6 +103,15 @@ app.use((err, req, res, next) => {
   console.error('Error:', err);
   res.status(500).json({ error: err.message });
 });
+
+// Empty-room cleanup: delete rooms that have stayed empty for 24 hours
+setInterval(async () => {
+  try {
+    await collectExpiredRooms(24);
+  } catch (error) {
+    console.error('Room cleanup error:', error);
+  }
+}, 60 * 60 * 1000);
 
 // Start server
 const PORT = process.env.PORT || 5000;

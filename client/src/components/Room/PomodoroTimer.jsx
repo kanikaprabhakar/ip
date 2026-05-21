@@ -4,7 +4,7 @@ import { useRoom } from '../../hooks/useSocket.js';
 const PomodoroTimer = ({ roomCode }) => {
   const { timerState, startTimer, pauseTimer } = useRoom();
   const [displayTime, setDisplayTime] = useState('25:00');
-  const [circumference] = useState(2 * Math.PI * 45); // radius = 45
+  const [circumference] = useState(2 * Math.PI * 45);
   const [strokeDashoffset, setStrokeDashoffset] = useState(0);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ const PomodoroTimer = ({ roomCode }) => {
         </div>
       </div>
 
-      <div className="flex gap-4 justify-center">
+      <div className="flex gap-4 justify-center flex-wrap">
         <button
           onClick={handleStart}
           disabled={timerState.isRunning}

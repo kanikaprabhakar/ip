@@ -1,0 +1,60 @@
+Zenith Study Buddy Workflow (Current)
+
+This document describes the practical engineering workflow used for the deployed project.
+
+Live services:
+- Frontend: https://zenith-sb.vercel.app
+- Backend: https://zenith-study-buddy.onrender.com
+
+1) Plan and scope
+
+- Keep feature scope anchored to study productivity outcomes.
+- Capture changes in docs before implementation.
+- Separate immediate fixes from feature expansion.
+
+2) Implement in vertical slices
+
+- Build each feature end-to-end: UI, API, data, and auth.
+- Validate user scoping with Clerk ID for every protected backend call.
+- Prefer incremental delivery over large untested rewrites.
+
+3) Backend-first contract for data features
+
+- Define endpoint and payload shape.
+- Implement controller logic with validation.
+- Verify SQL behavior and ownership filtering.
+- Then wire frontend API calls and UI states.
+
+4) AI planning flow
+
+- Generate weekly plan suggestions via backend AI endpoint.
+- Show preview in frontend.
+- Persist only after explicit user confirmation.
+- Keep fallback logic when provider quota/errors occur.
+
+5) Integration workflow
+
+- For Clerk: verify webhook signatures and user sync behavior.
+- For Google Calendar: validate OAuth callback, token storage, and disconnect path.
+- For external APIs: guard failures and return useful error messages.
+
+6) Quality checks before release
+
+- Smoke-test auth and dashboard access.
+- Verify tasks, sessions, notes, and resources CRUD.
+- Verify weekly summary and streak accuracy.
+- Verify Google connect, status, events, and disconnect.
+- Verify deployed frontend can reach deployed backend.
+
+7) Deployment updates
+
+- Frontend deploy on Vercel.
+- Backend deploy on Render.
+- Keep environment variables aligned across local and production.
+- Update docs whenever endpoint URLs, env vars, or behavior changes.
+
+8) Post-release hygiene
+
+- Track errors from logs.
+- Prioritize bugfixes affecting data integrity and auth.
+- Document any schema or API contract changes.

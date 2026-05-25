@@ -155,13 +155,13 @@ export async function ensureRoomsSchema() {
 	await sql`alter table public.study_room_members enable row level security`;
 	await sql`alter table public.study_room_tasks enable row level security`;
 	await sql`alter table public.study_room_messages enable row level security`;
+	await sql`alter table public.study_room_members add column if not exists active boolean not null default true`;
 	await sql`create index if not exists study_rooms_clerk_id_idx on public.study_rooms (clerk_id)`;
 	await sql`create index if not exists study_room_members_room_idx on public.study_room_members (room_id)`;
 	await sql`create index if not exists study_room_members_clerk_idx on public.study_room_members (clerk_id)`;
 	await sql`create index if not exists study_room_members_active_idx on public.study_room_members (room_id, active)`;
 	await sql`create index if not exists study_room_tasks_room_idx on public.study_room_tasks (room_id)`;
 	await sql`create index if not exists study_room_messages_room_idx on public.study_room_messages (room_id, created_at desc)`;
-	await sql`alter table public.study_room_members add column if not exists active boolean not null default true`;
 }
 
 export async function ensureCalendarSchema() {

@@ -33,6 +33,7 @@ function mapMemberRow(row) {
 		name: row.name ? String(row.name) : String(row.clerkId ?? row.clerk_id).slice(0, 8),
 		email: row.email ? String(row.email) : null,
 		role: String(row.role ?? "member"),
+		active: Boolean(row.active ?? true),
 		joinedAt: String(row.joinedAt ?? row.joined_at ?? new Date().toISOString()),
 	};
 }
@@ -60,7 +61,7 @@ function mapMessageRow(row) {
 	};
 }
 
-async function loadRoomDetail(roomId, clerkId) {
+async function getRoomAccess(roomId, clerkId) {
 	const [room] = await sql`
 		select
 			r.id,
@@ -68,55 +69,50 @@ async function loadRoomDetail(roomId, clerkId) {
 			r.title,
 			r.subject,
 			r.description,
-			active: Boolean(row.active ?? true),
 			r.room_mode as "roomMode",
 			r.status,
 			r.clerk_id,
-
-	async function getRoomAccess(roomId, clerkId) {
-		const [room] = await sql`
-			select r.id, r.invite_code as "inviteCode", r.title, r.subject, r.description, r.room_mode as "roomMode", r.status, r.clerk_id, r.created_at as "createdAt", r.updated_at as "updatedAt", u.name as "ownerName"
-			from public.study_rooms r
-			left join public.users u on u.clerk_id = r.clerk_id
-			where r.id = ${roomId}
-		`;
-		if (!room) return { room: null, isOwner: false, isActiveMember: false };
-		const [membership] = await sql`
-			select id, role, active, joined_at as "joinedAt"
-			from public.study_room_members
-			where room_id = ${roomId} and clerk_id = ${clerkId}
-		`;
-		const isOwner = String(room.clerk_id) === String(clerkId);
-		const isActiveMember = Boolean(membership?.active) || isOwner;
-		return { room, isOwner, isActiveMember };
-	}
 			r.created_at as "createdAt",
 			r.updated_at as "updatedAt",
-			coalesce((select count(*) from public.study_room_members m where m.room_id = r.id), 0)::int as "memberCount",
-			coalesce((select count(*) from public.study_room_tasks t where t.room_id = r.id), 0)::int as "taskCount",
-			coalesce((select count(*) from public.study_room_messages msg where msg.room_id = r.id), 0)::int as "messageCount",
-			(select max(created_at) from public.study_room_messages msg where msg.room_id = r.id) as "lastMessageAt",
 			u.name as "ownerName"
 		from public.study_rooms r
-			select m.id, m.clerk_id, m.role, m.active, m.joined_at, u.name, u.email
+		left join public.users u on u.clerk_id = r.clerk_id
 		where r.id = ${roomId}
-		  and (
-			where m.room_id = ${roomId} and m.active = true
-			or exists (
-				select 1
-				from public.study_room_members m
-				where m.room_id = r.id and m.clerk_id = ${clerkId}
-			)
-		  )
 	`;
 
-	if (!room) return null;
+	if (!room) return { room: null, isOwner: false, isActiveMember: false };
+
+	const [membership] = await sql`
+		select id, role, active, joined_at as "joinedAt"
+		from public.study_room_members
+		where room_id = ${roomId} and clerk_id = ${clerkId}
+	`;
+
+	const isOwner = String(room.clerk_id) === String(clerkId);
+	const isActiveMember = Boolean(membership?.active) || isOwner;
+
+	return { room, isOwner, isActiveMember };
+}
+
+async function loadRoomDetail(roomId, clerkId) {
+	const access = await getRoomAccess(roomId, clerkId);
+	if (!access.room || (!access.isActiveMember && !access.isOwner)) return null;
+
+	const [counts] = await sql`
+		select
+			coalesce((select count(*) from public.study_room_members m where m.room_id = r.id and m.active = true), 0)::int as "memberCount",
+			coalesce((select count(*) from public.study_room_tasks t where t.room_id = r.id), 0)::int as "taskCount",
+			coalesce((select count(*) from public.study_room_messages msg where msg.room_id = r.id), 0)::int as "messageCount",
+			(select max(created_at) from public.study_room_messages msg where msg.room_id = r.id) as "lastMessageAt"
+		from public.study_rooms r
+		where r.id = ${roomId}
+	`;
 
 	const members = await sql`
-		select m.id, m.clerk_id, m.role, m.joined_at, u.name, u.email
+		select m.id, m.clerk_id, m.role, m.active, m.joined_at, u.name, u.email
 		from public.study_room_members m
 		left join public.users u on u.clerk_id = m.clerk_id
-		where m.room_id = ${roomId}
+		where m.room_id = ${roomId} and m.active = true
 		order by m.joined_at asc
 	`;
 
@@ -138,7 +134,7 @@ async function loadRoomDetail(roomId, clerkId) {
 	`;
 
 	return {
-		room: mapRoomRow(room),
+		room: mapRoomRow({ ...access.room, ...counts }),
 		members: members.map(mapMemberRow),
 		tasks: tasks.map(mapTaskRow),
 		messages: messages.map(mapMessageRow),
@@ -190,6 +186,7 @@ export async function createRoom(req, res) {
 	if (!title?.trim()) return res.status(400).json({ error: "title is required" });
 
 	const mode = ["pomodoro", "focus", "study"].includes(String(roomMode)) ? String(roomMode) : "pomodoro";
+
 	for (let attempt = 0; attempt < 3; attempt += 1) {
 		const inviteCode = makeInviteCode();
 		try {
@@ -212,6 +209,7 @@ export async function createRoom(req, res) {
 			return res.status(500).json({ error: "Database error" });
 		}
 	}
+
 	return res.status(500).json({ error: "Could not generate invite code" });
 }
 
@@ -220,17 +218,20 @@ export async function joinRoom(req, res) {
 	if (!clerkId) return;
 	const inviteCode = String(req.body?.inviteCode ?? req.body?.code ?? "").trim().toUpperCase();
 	if (!inviteCode) return res.status(400).json({ error: "inviteCode is required" });
+
 	try {
 		const [room] = await sql`
 			select id from public.study_rooms where invite_code = ${inviteCode}
 		`;
 		if (!room) return res.status(404).json({ error: "Room not found" });
+
 		await sql`
 			insert into public.study_room_members (room_id, clerk_id, role)
 			values (${room.id}, ${clerkId}, 'member')
 			on conflict (room_id, clerk_id)
 			do update set role = excluded.role, active = true
 		`;
+
 		const detail = await loadRoomDetail(room.id, clerkId);
 		res.json(detail);
 	} catch (err) {
@@ -259,10 +260,12 @@ export async function addRoomTask(req, res) {
 	const { id } = req.params;
 	const title = String(req.body?.title ?? "").trim();
 	if (!title) return res.status(400).json({ error: "title is required" });
+
 	try {
 		const detail = await loadRoomDetail(id, clerkId);
 		if (!detail) return res.status(404).json({ error: "Room not found" });
 		if (String(detail.room.status) === "ended") return res.status(410).json({ error: "Room ended" });
+
 		const [row] = await sql`
 			insert into public.study_room_tasks (room_id, clerk_id, title)
 			values (${id}, ${clerkId}, ${title})
@@ -284,6 +287,7 @@ export async function toggleRoomTask(req, res) {
 		const detail = await loadRoomDetail(id, clerkId);
 		if (!detail) return res.status(404).json({ error: "Room not found" });
 		if (String(detail.room.status) === "ended") return res.status(410).json({ error: "Room ended" });
+
 		const [row] = await sql`
 			update public.study_room_tasks
 			set done = coalesce(${req.body?.done}, not done)
@@ -321,76 +325,14 @@ export async function addRoomMessage(req, res) {
 	const { id } = req.params;
 	const body = String(req.body?.body ?? "").trim();
 	if (!body) return res.status(400).json({ error: "body is required" });
+
 	try {
 		const detail = await loadRoomDetail(id, clerkId);
 		if (!detail) return res.status(404).json({ error: "Room not found" });
 		if (String(detail.room.status) === "ended") return res.status(410).json({ error: "Room ended" });
+
 		const [row] = await sql`
 			insert into public.study_room_messages (room_id, clerk_id, body)
-			export async function leaveRoom(req, res) {
-				const clerkId = await requireAuth(req, res);
-				if (!clerkId) return;
-				const { id } = req.params;
-				try {
-					const access = await getRoomAccess(id, clerkId);
-					if (!access.room) return res.status(404).json({ error: "Room not found" });
-					await sql`
-						update public.study_room_members
-						set active = false
-						where room_id = ${id} and clerk_id = ${clerkId}
-					`;
-					res.status(204).end();
-				} catch (err) {
-					console.error("POST /api/rooms/:id/leave:", err);
-					res.status(500).json({ error: "Database error" });
-				}
-			}
-
-			export async function removeRoomMember(req, res) {
-				const clerkId = await requireAuth(req, res);
-				if (!clerkId) return;
-				const { id, memberId } = req.params;
-				try {
-					const access = await getRoomAccess(id, clerkId);
-					if (!access.room) return res.status(404).json({ error: "Room not found" });
-					if (!access.isOwner) return res.status(403).json({ error: "Host only" });
-					if (String(memberId) === String(clerkId)) return res.status(400).json({ error: "Use end room to close your own room" });
-					await sql`
-						update public.study_room_members
-						set active = false
-						where room_id = ${id} and clerk_id = ${memberId}
-					`;
-					res.status(204).end();
-				} catch (err) {
-					console.error("DELETE /api/rooms/:id/members/:memberId:", err);
-					res.status(500).json({ error: "Database error" });
-				}
-			}
-
-			export async function endRoom(req, res) {
-				const clerkId = await requireAuth(req, res);
-				if (!clerkId) return;
-				const { id } = req.params;
-				try {
-					const access = await getRoomAccess(id, clerkId);
-					if (!access.room) return res.status(404).json({ error: "Room not found" });
-					if (!access.isOwner) return res.status(403).json({ error: "Host only" });
-					await sql`
-						update public.study_rooms
-						set status = 'ended', updated_at = now()
-						where id = ${id}
-					`;
-					await sql`
-						update public.study_room_members
-						set active = false
-						where room_id = ${id}
-					`;
-					res.status(204).end();
-				} catch (err) {
-					console.error("POST /api/rooms/:id/end:", err);
-					res.status(500).json({ error: "Database error" });
-				}
-			}
 			values (${id}, ${clerkId}, ${body})
 			returning id, room_id, clerk_id, body, created_at
 		`;
@@ -398,6 +340,71 @@ export async function addRoomMessage(req, res) {
 		res.status(201).json(mapMessageRow({ ...row, authorName: author?.name ?? null }));
 	} catch (err) {
 		console.error("POST /api/rooms/:id/messages:", err);
+		res.status(500).json({ error: "Database error" });
+	}
+}
+
+export async function leaveRoom(req, res) {
+	const clerkId = await requireAuth(req, res);
+	if (!clerkId) return;
+	const { id } = req.params;
+	try {
+		const access = await getRoomAccess(id, clerkId);
+		if (!access.room) return res.status(404).json({ error: "Room not found" });
+		await sql`
+			update public.study_room_members
+			set active = false
+			where room_id = ${id} and clerk_id = ${clerkId}
+		`;
+		res.status(204).end();
+	} catch (err) {
+		console.error("POST /api/rooms/:id/leave:", err);
+		res.status(500).json({ error: "Database error" });
+	}
+}
+
+export async function removeRoomMember(req, res) {
+	const clerkId = await requireAuth(req, res);
+	if (!clerkId) return;
+	const { id, memberId } = req.params;
+	try {
+		const access = await getRoomAccess(id, clerkId);
+		if (!access.room) return res.status(404).json({ error: "Room not found" });
+		if (!access.isOwner) return res.status(403).json({ error: "Host only" });
+		if (String(memberId) === String(clerkId)) return res.status(400).json({ error: "Use end room to close your own room" });
+		await sql`
+			update public.study_room_members
+			set active = false
+			where room_id = ${id} and clerk_id = ${memberId}
+		`;
+		res.status(204).end();
+	} catch (err) {
+		console.error("DELETE /api/rooms/:id/members/:memberId:", err);
+		res.status(500).json({ error: "Database error" });
+	}
+}
+
+export async function endRoom(req, res) {
+	const clerkId = await requireAuth(req, res);
+	if (!clerkId) return;
+	const { id } = req.params;
+	try {
+		const access = await getRoomAccess(id, clerkId);
+		if (!access.room) return res.status(404).json({ error: "Room not found" });
+		if (!access.isOwner) return res.status(403).json({ error: "Host only" });
+		await sql`
+			update public.study_rooms
+			set status = 'ended', updated_at = now()
+			where id = ${id}
+		`;
+		await sql`
+			update public.study_room_members
+			set active = false
+			where room_id = ${id}
+		`;
+		res.status(204).end();
+	} catch (err) {
+		console.error("POST /api/rooms/:id/end:", err);
 		res.status(500).json({ error: "Database error" });
 	}
 }
